@@ -12,7 +12,9 @@ defmodule Clustertest.Application do
     ]
 
     [
-      {Cluster.Supervisor, [topologies, [name: Clustertest.ClusterSupervisor]]}
+      {Cluster.Supervisor, [topologies, [name: Clustertest.ClusterSupervisor]]},
+
+      {Clustertest.Store.Racoon, []},
     ]
     |> Supervisor.start_link(strategy: :one_for_one)
   end
