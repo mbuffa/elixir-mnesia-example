@@ -15,7 +15,9 @@ defmodule Clustertest.MixProject do
   def application do
     [
       mod: {Clustertest.Application, []},
-      extra_applications: [:logger, :mnesia]
+      extra_applications: [:logger, :mnesia],
+      # Set this instead for production.
+      # included_applications: [:mnesia]
     ]
   end
 

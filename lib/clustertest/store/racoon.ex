@@ -1,6 +1,30 @@
 defmodule Clustertest.Store.Racoon do
   use GenServer
 
+  defmodule Types.Racoon do
+    defstruct [
+      :id,
+      :name,
+      caretaker_id: nil
+    ]
+
+    def decode({__MODULE__, id, name, caretaker_id}) do
+      %__MODULE__{
+        id: id,
+        name: name,
+        caretaker_id: caretaker_id
+      }
+    end
+
+    def encode(%__MODULE__{
+      id: id,
+      name: name,
+      caretaker_id: caretaker_id
+    }) do
+      {__MODULE__, id, name, caretaker_id}
+    end
+  end
+
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, %{}, opts)
   end
@@ -28,6 +52,63 @@ defmodule Clustertest.Store.Racoon do
     {:noreply, state}
   end
 
+  def list() do
+    {:atomic, list} = :mnesia.transaction(fn ->
+      :mnesia.match_object({Types.Racoon, :_, :_, :_})
+    end)
+
+    list |> Enum.map(fn x -> Types.Racoon.decode(x) end)
+  end
+
+  def create(%Types.Racoon{ id: id } = state) when is_integer(id) do
+    IO.puts("Inserting #{inspect state}")
+
+    {:atomic, reason} = :mnesia.transaction(fn ->
+      case :mnesia.read(Types.Racoon, id, :write) do
+        [] ->
+          Types.Racoon.encode(state) |> :mnesia.write()
+        _ ->
+          :record_exists
+      end
+    end)
+
+    reason
+  end
+
+  def update(%Types.Racoon{ id: id } = new_state) when is_integer(id) do
+    IO.puts("Updating #{inspect new_state}")
+
+    {:atomic, reason} = :mnesia.transaction(fn ->
+      [{Types.Racoon, ^id, _, _,}] = :mnesia.read(Types.Racoon, id, :write)
+
+      Types.Racoon.encode(new_state) |> :mnesia.write()
+    end)
+
+    reason
+  end
+
+  def read(id) when is_integer(id) do
+    IO.puts("Returning #{id}")
+
+    {:atomic, result} = :mnesia.transaction(fn ->
+      :mnesia.read(Types.Racoon, id, :read)
+    end)
+
+    case result do
+      [] -> nil
+      list -> list |> List.first() |> Types.Racoon.decode()
+    end
+  end
+
+  def delete(id) when is_integer(id) do
+    IO.puts("Deleting #{id}")
+
+    {:atomic, :ok} = :mnesia.transaction(fn ->
+      :ok = :mnesia.delete(Types.Racoon, id, :write)
+    end)
+    :ok
+  end
+
   defp connect_mnesia_to_cluster() do
     :ok = :mnesia.start()
 
@@ -52,31 +133,30 @@ defmodule Clustertest.Store.Racoon do
 
   defp ensure_table_exists() do
     :mnesia.create_table(
-      Racoon,
+      Types.Racoon,
       [
         attributes: [
           :id,
           :name,
           :caretaker_id
-        ]
+        ],
+        disc_copies: [Node.self()]
       ]
     )
     |> case do
       {:atomic, :ok} ->
         :ok
-      {:aborted, {:already_exists, Racoon}} ->
+      {:aborted, {:already_exists, Types.Racoon}} ->
         :ok
     end
 
-    :ok = :mnesia.wait_for_tables([Racoon], 5000)
+    :ok = :mnesia.wait_for_tables([Types.Racoon], 5000)
   end
 
   defp ensure_table_copy_exists() do
-    case :mnesia.add_table_copy(Racoon, node(), :disc_copies) do
+    case :mnesia.add_table_copy(Types.Racoon, node(), :disc_copies) do
       {:atomic, :ok} -> :ok
-      {:aborted, {:already_exists, Racoon, _node}} -> :ok
+      {:aborted, {:already_exists, Types.Racoon, _node}} -> :ok
     end
   end
-
-
 end
